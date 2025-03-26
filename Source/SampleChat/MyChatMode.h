@@ -24,7 +24,9 @@ public:
 	UFUNCTION()
 	void NextTurn();
 	UFUNCTION(Server, Reliable)
-	void GotMessageFromClient(const FString& Msg, AChatPlayerController* CPC);
+	void ServerGotMessageFromClient(const FString& Msg, AChatPlayerController* CPC);
+	UFUNCTION()
+	void HandlePlayerTimeout(AChatPlayerController* TimeoutPlayer);
 
 	int32 GetRandomNumberFromGameMode() const { return RandomNumber; }
 
@@ -33,8 +35,10 @@ protected:
 	int32 CurrentTurnIndex;
 	
 	void SetTurn(int32 NewTurnIndex);
+	
 private:
 	int32 RandomNumber;
+	int32 MaxPlayerNumber;
 
 	void ResetGame(FString UserID);
 };

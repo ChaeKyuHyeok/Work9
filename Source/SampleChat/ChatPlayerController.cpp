@@ -22,6 +22,89 @@ void AChatPlayerController::ServerSetUserID_Implementation(const FString& ID)
 	UserID = ID;
 }
 
+void AChatPlayerController::ClientUpdateTurnTimeRemaining_Implementation(float TimeRemaining)
+{
+	TurnTimeRemaining = TimeRemaining;
+
+	if (UWidget_ChatWindow* ChatWidget = Cast<UWidget_ChatWindow>(Widget))
+	{
+		ChatWidget->UpdateTimerText(FString::FromInt(TurnTimeRemaining));
+	}
+}
+
+void AChatPlayerController::ClientUpdateScore_Implementation()
+{
+	if (Widget)
+	{
+		if (UWidget_ChatWindow* ChatWidget = Cast<UWidget_ChatWindow>(Widget))
+		{
+			ChatWidget->UpdateScoreTextBlock();
+		}
+	}
+}
+
+void AChatPlayerController::StartTurnTimer()
+{
+	TurnTimeRemaining = 10.0f;
+	GetWorldTimerManager().SetTimer(
+		TurnTimerHandle,
+		this,
+		&AChatPlayerController::UpdateTurnTimer,
+		1.0f,
+		true);
+	ClientUpdateTurnTimeRemaining(TurnTimeRemaining);
+}
+
+void AChatPlayerController::StopTurnTimer(float TimeDefault)
+{
+	ClientUpdateTurnTimeRemaining(TimeDefault);
+	GetWorldTimerManager().ClearTimer(TurnTimerHandle);
+}
+
+void AChatPlayerController::UpdateTurnTimer()
+{
+	TurnTimeRemaining -= 1.0f;
+
+	ClientUpdateTurnTimeRemaining(TurnTimeRemaining);
+
+	if (TurnTimeRemaining <= 0.0f)
+	{
+		GetWorldTimerManager().ClearTimer(TurnTimerHandle);
+		OnTurnTimeExpired();
+	}
+}
+
+void AChatPlayerController::OnTurnTimeExpired()
+{
+	if (HasAuthority())
+	{
+		if (AMyChatMode* GameMode = Cast<AMyChatMode>(GetWorld()->GetAuthGameMode()))
+		{
+			GameMode->HandlePlayerTimeout(this);
+		}
+	}
+}
+
+void AChatPlayerController::SetMyTurn(bool bNewTurn)
+{
+	bMyTurn = bNewTurn;
+
+	if (bMyTurn)
+	{
+		StartTurnTimer();
+	}
+	else
+	{
+		GetWorldTimerManager().ClearTimer(TurnTimerHandle);
+		if (UWidget_ChatWindow* ChatWidget = Cast<UWidget_ChatWindow>(Widget))
+		{
+			ChatWidget->UpdateTimerText(FString::FromInt(10.0f));
+		}
+	}
+	
+	ClientUpdateTurnState(bNewTurn); 
+}
+
 void AChatPlayerController::BeginPlay()
 {
 	Super::BeginPlay();
@@ -30,7 +113,6 @@ void AChatPlayerController::BeginPlay()
 	{
 		if (AMyChatMode* GameMode = Cast<AMyChatMode>(GetWorld()->GetAuthGameMode()))
 		{
-			//GameMode->UpdatePCs();
 			RandomNumberFromServer = GameMode->GetRandomNumberFromGameMode();
 			MulticastUpdateRandomNumber(RandomNumberFromServer);
 		}
@@ -54,6 +136,7 @@ void AChatPlayerController::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>
 
 	DOREPLIFETIME(AChatPlayerController, RandomNumberFromServer);
 	DOREPLIFETIME(AChatPlayerController, bMyTurn);
+	DOREPLIFETIME(AChatPlayerController, TurnTimeRemaining);
 }
 
 void AChatPlayerController::ClientUpdateTurnState_Implementation(bool bIsMyTurn)
@@ -77,12 +160,12 @@ void AChatPlayerController::FindAndBindWidget()
 		UWidget_ChatWindow* ChatWidget = Cast<UWidget_ChatWindow>(Widget);
 		if (ChatWidget)
 		{
-			ChatWidget->SetMsgToUserController.AddDynamic(this, &AChatPlayerController::OnSendMessageToServer);
+			ChatWidget->SetMsgToUserController.AddDynamic(this, &AChatPlayerController::ServerOnSendMessageToServer);
 		}
 	}
 }
 
-void AChatPlayerController::OnLoginWithID_Implementation(const FString& ID)
+void AChatPlayerController::ClientOnLoginWithID_Implementation(const FString& ID)
 {
 	this->UserID = ID;
 	if (!HasAuthority())
@@ -92,10 +175,10 @@ void AChatPlayerController::OnLoginWithID_Implementation(const FString& ID)
 
 	UE_LOG(LogTemp, Warning, TEXT("%s"), *ID);
 
-	GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Red, FString::Printf(TEXT("User logged in: %s"), *ID));
+	GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Red, FString::Printf(TEXT("%s 로 로그인"), *ID));
 }
 
-void AChatPlayerController::GotBroadcast_Implementation(const FString& Msg)
+void AChatPlayerController::ClientGotBroadcast_Implementation(const FString& Msg)
 {
 	FColor MsgColor;
 	if (Msg.Contains("가 제출한 정답"))
@@ -114,12 +197,11 @@ void AChatPlayerController::GotBroadcast_Implementation(const FString& Msg)
 	GEngine->AddOnScreenDebugMessage(-1, 5.f, MsgColor, *Msg);
 }
 
-void AChatPlayerController::OnSendMessageToServer_Implementation(const FString& Msg)
+void AChatPlayerController::ServerOnSendMessageToServer_Implementation(const FString& Msg)
 {
-	UE_LOG(LogTemp, Warning, TEXT("User ID : %s, Msg : %s"), *UserID, *Msg);
 	AMyChatMode* MyChatMode = Cast<AMyChatMode>(GetWorld()->GetAuthGameMode());
 	if (MyChatMode)
 	{
-		MyChatMode->GotMessageFromClient(FString::Printf(TEXT("%s : %s"), *UserID, *Msg), this);
+		MyChatMode->ServerGotMessageFromClient(FString::Printf(TEXT("%s : %s"), *UserID, *Msg), this);
 	}
 }

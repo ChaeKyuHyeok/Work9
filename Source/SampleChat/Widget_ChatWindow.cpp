@@ -5,11 +5,14 @@
 
 #include "ChatPlayerController.h"
 #include "Components/EditableTextBox.h"
+#include "Components/TextBlock.h"
 #include "Kismet/GameplayStatics.h"
 
 void UWidget_ChatWindow::NativeConstruct()
 {
 	Super::NativeConstruct();
+
+	CorrectCount = 0;
 
 	if (APlayerController* PlayerController = GetWorld()->GetFirstPlayerController())
 	{
@@ -18,7 +21,7 @@ void UWidget_ChatWindow::NativeConstruct()
 			ChatPlayerController->OnUserLogin.AddDynamic(this, &UWidget_ChatWindow::OnLoginEvent);
 		}
 	}
-	
+
 	if (EditableTextBox->IsValidLowLevel())
 	{
 		EditableTextBox->OnTextCommitted.AddDynamic(this, &UWidget_ChatWindow::HandleTextCommitted);
@@ -39,7 +42,8 @@ void UWidget_ChatWindow::HandleTextCommitted(const FText& Text, ETextCommit::Typ
 	{
 		if (!Text.IsEmpty())
 		{
-			AChatPlayerController* ChatPlayerController = Cast<AChatPlayerController>(UGameplayStatics::GetPlayerController(this, 0));
+			AChatPlayerController* ChatPlayerController = Cast<AChatPlayerController>(
+				UGameplayStatics::GetPlayerController(this, 0));
 			if (Text.ToString().Contains("/") && !ChatPlayerController->GetMyTurn())
 			{
 				GEngine->AddOnScreenDebugMessage(
@@ -58,5 +62,22 @@ void UWidget_ChatWindow::HandleTextCommitted(const FText& Text, ETextCommit::Typ
 		{
 			EditableTextBox->SetText(FText::GetEmpty());
 		}
+	}
+}
+
+void UWidget_ChatWindow::UpdateTimerText(const FString& NewTime)
+{
+	if (TimerTextBlock)
+	{
+		TimerTextBlock->SetText(FText::FromString(NewTime));
+	}
+}
+
+void UWidget_ChatWindow::UpdateScoreTextBlock()
+{
+	CorrectCount++;
+	if (ScoreTextBlock)
+	{
+		ScoreTextBlock->SetText(FText::FromString(FString::Printf(TEXT("맞춘 횟수 : %d"), CorrectCount)));
 	}
 }

@@ -26,6 +26,11 @@ public:
 	void OnLoginEvent(const FString& UserID);
 	UFUNCTION()
 	void HandleTextCommitted(const FText& Text, ETextCommit::Type Commit);
+	UFUNCTION()
+	void UpdateTimerText(const FString& NewTime);
+	UFUNCTION()
+	void UpdateScoreTextBlock();
+	
 protected:
 	virtual void NativeConstruct() override;
 
@@ -37,4 +42,6 @@ protected:
 	TObjectPtr<UTextBlock> ScoreTextBlock;
 	UPROPERTY(meta = (BindWidget))
 	TObjectPtr<UTextBlock> TimerTextBlock;
+
+	int32 CorrectCount;
 };

@@ -5,12 +5,14 @@
 #include "ChatPlayerController.h"
 #include "Kismet/GameplayStatics.h"
 #include "MyBlueprintFunctionLibrary.h"
+#include "Widget_ChatWindow.h"
 #include "Net/UnrealNetwork.h"
 
 AMyChatMode::AMyChatMode()
 {
 	PrimaryActorTick.bCanEverTick = false;
 	CurrentTurnIndex = 0;
+	MaxPlayerNumber = 2;
 }
 
 void AMyChatMode::BeginPlay()
@@ -26,8 +28,8 @@ void AMyChatMode::PostLogin(APlayerController* NewPlayer)
 	Super::PostLogin(NewPlayer);
 
 	PlayerControllers.Add(NewPlayer);
-
-	if (PlayerControllers.Num() == 1)
+	
+	if (PlayerControllers.Num() == MaxPlayerNumber)
 	{
 		SetTurn(0);
 	}
@@ -42,16 +44,69 @@ void AMyChatMode::NextTurn()
 	SetTurn(CurrentTurnIndex);
 }
 
+void AMyChatMode::HandlePlayerTimeout(AChatPlayerController* TimeoutPlayer)
+{
+	if (TimeoutPlayer)
+	{
+		for (AActor* PC : PlayerControllers)
+		{
+			if (AChatPlayerController* ChatPlayerController = Cast<AChatPlayerController>(PC))
+			{
+				ChatPlayerController->ClientGotBroadcast(TimeoutPlayer->GetUserID() + FString::Printf(TEXT("의 시간이 초과 되었다.")));
+			}
+		}
+
+		TimeoutPlayer->SetTryCount(TimeoutPlayer->GetTryCount() + 1);
+
+		if (TimeoutPlayer->GetTryCount() >= 3)
+		{
+			for (AActor* PC : PlayerControllers)
+			{
+				if (AChatPlayerController* ChatPlayerController = Cast<AChatPlayerController>(PC))
+				{
+					ChatPlayerController->ClientGotBroadcast(
+						TimeoutPlayer->GetUserID() + FString::Printf(TEXT(" 모든 도전 횟수 사용으로 다른 플레이어가 승리한다")));
+				}
+			}
+
+			FString OtherPlayerID;
+			for (AActor* PC : PlayerControllers)
+			{
+				if (AChatPlayerController* ChatPlayerController = Cast<AChatPlayerController>(PC))
+				{
+					if (ChatPlayerController != TimeoutPlayer)
+					{
+						OtherPlayerID = ChatPlayerController->GetUserID();
+						break;
+					}
+				}
+			}
+			ResetGame(OtherPlayerID);
+		}
+		else
+		{
+			NextTurn();
+		}
+	}
+}
+
 void AMyChatMode::SetTurn(int32 NewTurnIndex)
 {
-	for (int32 i=0; i<PlayerControllers.Num(); i++)
+	for (int32 i = 0; i < PlayerControllers.Num(); i++)
 	{
 		AChatPlayerController* ChatPlayerController = Cast<AChatPlayerController>(PlayerControllers[i]);
 		if (ChatPlayerController)
 		{
 			bool bIsCurrentTurn = (i == CurrentTurnIndex);
-
-			ChatPlayerController->SetMyTurn(bIsCurrentTurn);
+			
+			if (bIsCurrentTurn)
+			{
+				ChatPlayerController->SetMyTurn(bIsCurrentTurn);
+			}
+			else
+			{
+				ChatPlayerController->StopTurnTimer(10.0f);
+			}
 		}
 	}
 }
@@ -68,12 +123,12 @@ void AMyChatMode::ResetGame(FString UserID)
 		if (ChatPlayerController)
 		{
 			ChatPlayerController->SetTryCount(0);
-			ChatPlayerController->GotBroadcast(UserID + FString::Printf(TEXT(" Won!! 다시 게임이 시작됐다.")));
+			ChatPlayerController->ClientGotBroadcast(UserID + FString::Printf(TEXT(" Won!! 다시 게임이 시작됐다.")));
 		}
 	}
 }
 
-void AMyChatMode::GotMessageFromClient_Implementation(const FString& Msg, AChatPlayerController* CPC)
+void AMyChatMode::ServerGotMessageFromClient_Implementation(const FString& Msg, AChatPlayerController* CPC)
 {
 	int32 CPCTryCount;
 	int32 PlayerAnswerNumber;
@@ -85,6 +140,7 @@ void AMyChatMode::GotMessageFromClient_Implementation(const FString& Msg, AChatP
 
 	if (Msg.Contains("/"))
 	{
+		
 		//시도횟수를 가져와서 ++ 해줌
 		CPCTryCount = CPC->GetTryCount() + 1;
 		CPC->SetTryCount(CPCTryCount);
@@ -120,18 +176,20 @@ void AMyChatMode::GotMessageFromClient_Implementation(const FString& Msg, AChatP
 			{
 				if (bIsCorrect)
 				{
-					ChatPlayerController->GotBroadcast(PlayerID + FString::Printf(TEXT("가 제출한 정답 : %d"), PlayerAnswerNumber));
+					ChatPlayerController->ClientGotBroadcast(
+						PlayerID + FString::Printf(TEXT("가 제출한 정답 : %d"), PlayerAnswerNumber));
 					bDoReset = true;
 				}
 				else
 				{
-					ChatPlayerController->GotBroadcast(PlayerID + FString::Printf(TEXT(" : 시도 횟수 : %d"), CPCTryCount));
-					ChatPlayerController->GotBroadcast(
+					ChatPlayerController->ClientGotBroadcast(
+						PlayerID + FString::Printf(TEXT(" : 시도 횟수 : %d"), CPCTryCount));
+					ChatPlayerController->ClientGotBroadcast(
 						PlayerID + FString::Printf(TEXT("가 제출한 정답 : %d"), PlayerAnswerNumber));
-					ChatPlayerController->GotBroadcast(Result);
+					ChatPlayerController->ClientGotBroadcast(Result);
 					if (CPCTryCount == 3)
 					{
-						ChatPlayerController->GotBroadcast(
+						ChatPlayerController->ClientGotBroadcast(
 							PlayerID + FString::Printf(TEXT(" 모든 도전 횟수 사용으로 다른 플레이어가 승리한다")));
 						bDoReset = true;
 					}
@@ -144,11 +202,18 @@ void AMyChatMode::GotMessageFromClient_Implementation(const FString& Msg, AChatP
 			//응답이 아닐 경우 일반 대화 로그로 출력
 			else
 			{
-				ChatPlayerController->GotBroadcast(Msg);
+				ChatPlayerController->ClientGotBroadcast(Msg);
 			}
 		}
 	}
 
+	if (bIsCorrect)
+	{
+		if (CPC)
+		{
+			CPC->ClientUpdateScore();
+		}
+	}
 	if (bShouldChangeTurn)
 	{
 		NextTurn();

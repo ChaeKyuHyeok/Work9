@@ -21,25 +21,44 @@ public:
 	FOnUserLoginDelegate OnUserLogin;
 	UPROPERTY(Replicated)
 	bool bMyTurn;
+	UPROPERTY(Replicated)
+	float TurnTimeRemaining;
+
+	UPROPERTY()
+	FTimerHandle TurnTimerHandle;
 
 	UUserWidget* Widget;
-
-	UFUNCTION(Client, Reliable)
-	void ClientUpdateTurnState(bool bIsMyTurn);
+	
 	UFUNCTION(Client, Reliable, BlueprintCallable, Category = "Chat")
-	void OnLoginWithID(const FString& ID);
+	void ClientOnLoginWithID(const FString& ID);
 	UFUNCTION(Server, Reliable, BlueprintCallable, Category = "Chat")
 	void ServerSetUserID(const FString& ID);
 	UFUNCTION(Client, Reliable, BlueprintCallable, Category = "Chat")
-	void GotBroadcast(const FString& Msg);
+	void ClientGotBroadcast(const FString& Msg);
 	UFUNCTION(Server, Reliable, BlueprintCallable, Category = "Chat")
-	void OnSendMessageToServer(const FString& Msg);
+	void ServerOnSendMessageToServer(const FString& Msg);
+	UFUNCTION(Client, Reliable)
+	void ClientUpdateScore();
+	UFUNCTION(Client, Reliable)
+	void ClientUpdateTurnState(bool bIsMyTurn);
+	UFUNCTION(Client, Reliable)
+	void ClientUpdateTurnTimeRemaining(float TimeRemaining);
+	UFUNCTION()
+	void StartTurnTimer();
+	UFUNCTION()
+	void StopTurnTimer(float TimeDefault);
+	UFUNCTION()
+	void UpdateTurnTimer();
+	UFUNCTION()
+	void OnTurnTimeExpired();
 
 	FString GetUserID() const { return UserID; }
+	UUserWidget* GetWidget() const { return Widget; }
 	int32 GetTryCount() const { return TryCount; }
 	bool GetMyTurn() const { return bMyTurn; }
 	void SetTryCount(int32 NewNumber) { TryCount = NewNumber; }
-	void SetMyTurn(bool bNewBool) { bMyTurn = bNewBool; ClientUpdateTurnState(bNewBool); }
+	void SetCorrectCount(int32 NewNumber);
+	void SetMyTurn(bool bNewTurn);
 
 protected:
 	virtual void BeginPlay() override;
